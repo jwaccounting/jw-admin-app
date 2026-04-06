@@ -9,6 +9,7 @@ export interface License {
   id: string;
   machine_id: string;
   customer_name: string;
+  phone: string;
   is_active: boolean;
   expire_date: string | null;
   plan: string;

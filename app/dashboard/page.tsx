@@ -25,10 +25,10 @@ export default function DashboardPage() {
   const [tab, setTab]           = useState<"machines"|"pending"|"payments">("machines");
 
   const [editId, setEditId]     = useState<string|null>(null);
-  const [editForm, setEditForm] = useState({ customer_name:"", plan:"รายเดือน", expire_days:"30", is_active:true });
+  const [editForm, setEditForm] = useState({ customer_name:"", phone:"", plan:"รายเดือน", expire_days:"30", is_active:true });
 
   const [approveId, setApproveId]     = useState<string|null>(null);
-  const [approveForm, setApproveForm] = useState({ customer_name:"", plan:"รายเดือน", expire_days:"30" });
+  const [approveForm, setApproveForm] = useState({ customer_name:"", phone:"", plan:"รายเดือน", expire_days:"30" });
   const [saving, setSaving]           = useState(false);
 
   const logout = () => { document.cookie="jw-admin-auth=; path=/; max-age=0"; router.push("/"); };
@@ -67,6 +67,7 @@ export default function DashboardPage() {
     const days = editForm.plan==="กำหนดเอง (วัน)" ? parseInt(editForm.expire_days)||30 : PLAN_DAYS[editForm.plan]??30;
     await supabase.from("licenses").update({
       customer_name: editForm.customer_name,
+      phone: editForm.phone,
       plan: editForm.plan,
       is_active: editForm.is_active,
       expire_date: editForm.plan==="ตลอดไป" ? null : addDays(days),
@@ -80,6 +81,7 @@ export default function DashboardPage() {
     const days = approveForm.plan==="กำหนดเอง (วัน)" ? parseInt(approveForm.expire_days)||30 : PLAN_DAYS[approveForm.plan]??30;
     await supabase.from("licenses").update({
       customer_name: approveForm.customer_name,
+      phone: approveForm.phone,
       plan: approveForm.plan,
       is_active: true,
       expire_date: approveForm.plan==="ตลอดไป" ? null : addDays(days),
@@ -205,7 +207,7 @@ export default function DashboardPage() {
                         </td>
                         <td style={TD}>
                           <div style={{ display:"flex", gap:6 }}>
-                            <button onClick={() => { setEditId(lic.id); setEditForm({ customer_name:lic.customer_name, plan:lic.plan??"รายเดือน", expire_days:"30", is_active:lic.is_active }); }}
+                            <button onClick={() => { setEditId(lic.id); setEditForm({ customer_name:lic.customer_name, phone:lic.phone||"", plan:lic.plan??"รายเดือน", expire_days:"30", is_active:lic.is_active }); }}
                               style={{ fontSize:11, padding:"4px 10px", borderRadius:6, border:"0.5px solid #E5E7EB", background:"#fff", cursor:"pointer", color:"#374151" }}>แก้ไข</button>
                             <button onClick={() => deleteLic(lic.id)}
                               style={{ fontSize:11, padding:"4px 10px", borderRadius:6, border:"none", background:"#FEE2E2", cursor:"pointer", color:"#991B1B" }}>ลบ</button>
@@ -241,7 +243,7 @@ export default function DashboardPage() {
                       <td style={{ ...TD, color:"#6B7280" }}>{new Date(lic.created_at).toLocaleDateString("th-TH")}</td>
                       <td style={TD}>
                         <div style={{ display:"flex", gap:6 }}>
-                          <button onClick={() => { setApproveId(lic.id); setApproveForm({ customer_name:lic.customer_name||"", plan:"รายเดือน", expire_days:"30" }); }}
+                          <button onClick={() => { setApproveId(lic.id); setApproveForm({ customer_name:lic.customer_name||"", phone:lic.phone||"", plan:"รายเดือน", expire_days:"30" }); }}
                             style={{ fontSize:11, padding:"4px 12px", borderRadius:6, border:"none", background:"#DCFCE7", color:"#166534", cursor:"pointer", fontWeight:600 }}>ยืนยัน</button>
                           <button onClick={() => rejectMachine(lic.id)}
                             style={{ fontSize:11, padding:"4px 12px", borderRadius:6, border:"none", background:"#FEE2E2", color:"#991B1B", cursor:"pointer" }}>ปฏิเสธ</button>
@@ -302,6 +304,10 @@ export default function DashboardPage() {
             <div style={{ fontSize:16, fontWeight:700, color:"#111827", marginBottom:20 }}>แก้ไข License</div>
             <label style={{ fontSize:12, color:"#6B7280", display:"block", marginBottom:4 }}>ชื่อลูกค้า</label>
             <input value={editForm.customer_name} onChange={e=>setEditForm(f=>({...f,customer_name:e.target.value}))}
+              style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:"1px solid #E5E7EB", fontSize:13, marginBottom:12, boxSizing:"border-box" as const, outline:"none" }} />
+            <label style={{ fontSize:12, color:"#6B7280", display:"block", marginBottom:4 }}>เบอร์โทรศัพท์</label>
+            <input value={editForm.phone} onChange={e=>setEditForm(f=>({...f,phone:e.target.value}))}
+              placeholder="เช่น 081-234-5678"
               style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:"1px solid #E5E7EB", fontSize:13, marginBottom:14, boxSizing:"border-box" as const, outline:"none" }} />
             <label style={{ fontSize:12, color:"#6B7280", display:"block", marginBottom:8 }}>แพ็กเกจ</label>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:14 }}>
@@ -337,6 +343,10 @@ export default function DashboardPage() {
             <label style={{ fontSize:12, color:"#6B7280", display:"block", marginBottom:4 }}>ชื่อลูกค้า</label>
             <input value={approveForm.customer_name} onChange={e=>setApproveForm(f=>({...f,customer_name:e.target.value}))}
               placeholder="เช่น บริษัท ABC จำกัด"
+              style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:"1px solid #E5E7EB", fontSize:13, marginBottom:12, boxSizing:"border-box" as const, outline:"none" }} />
+            <label style={{ fontSize:12, color:"#6B7280", display:"block", marginBottom:4 }}>เบอร์โทรศัพท์</label>
+            <input value={approveForm.phone} onChange={e=>setApproveForm(f=>({...f,phone:e.target.value}))}
+              placeholder="เช่น 081-234-5678"
               style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:"1px solid #E5E7EB", fontSize:13, marginBottom:14, boxSizing:"border-box" as const, outline:"none" }} />
             <label style={{ fontSize:12, color:"#6B7280", display:"block", marginBottom:8 }}>แพ็กเกจ</label>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:14 }}>
