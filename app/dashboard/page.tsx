@@ -25,7 +25,9 @@ export default function DashboardPage() {
   const [editId, setEditId]     = useState<string|null>(null);
   const [editForm, setEditForm] = useState({ customer_name:"", plan:"รายเดือน", expire_days:"30", is_active:true });
   const [saving, setSaving]     = useState(false);
-  const [tab, setTab]           = useState<"machines"|"payments">("machines");
+  const [tab, setTab]           = useState<"machines"|"pending"|"payments">("machines");
+  const [approveId, setApproveId] = useState<string|null>(null);
+  const [approveForm, setApproveForm] = useState({ customer_name:"", plan:"รายเดือน", expire_days:"30" });
 
   const logout = () => { document.cookie="jw-admin-auth=; path=/; max-age=0"; router.push("/"); };
 
@@ -40,6 +42,30 @@ export default function DashboardPage() {
     setLoading(false);
   };
   useEffect(() => { fetchData(); }, []);
+
+  const pending = licenses.filter(l => l.plan === "pending");
+  const active  = licenses.filter(l => l.is_active && l.plan !== "pending");
+
+  const approveMachine = async () => {
+    if (!approveId) return;
+    setSaving(true);
+    const days = approveForm.plan==="กำหนดเอง (วัน)" ? parseInt(approveForm.expire_days)||30 : PLAN_DAYS[approveForm.plan]??30;
+    await supabase.from("licenses").update({
+      customer_name: approveForm.customer_name,
+      plan: approveForm.plan,
+      is_active: true,
+      expire_date: approveForm.plan==="ตลอดไป" ? null : addDays(days),
+    }).eq("id", approveId);
+    setApproveId(null);
+    setSaving(false);
+    fetchData();
+  };
+
+  const rejectMachine = async (id: string) => {
+    if (!confirm("ยืนยันปฏิเสธและลบเครื่องนี้?")) return;
+    await supabase.from("licenses").delete().eq("id", id);
+    fetchData();
+  };
 
   const toggleActive = async (lic: License) => {
     await supabase.from("licenses").update({ is_active:!lic.is_active }).eq("id", lic.id);
@@ -104,10 +130,10 @@ export default function DashboardPage() {
       <div style={S.body}>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:20 }}>
           {[
-            { label:"เครื่องทั้งหมด", val:licenses.length, color:"#0C447C", bg:"#dbeafe" },
-            { label:"ใช้งานอยู่",      val:active,          color:"#166534", bg:"#dcfce7" },
-            { label:"ใกล้หมดอายุ",    val:expiring,        color:"#92400e", bg:"#fef3c7" },
-            { label:"รอยืนยันชำระ",   val:pending,         color:"#991b1b", bg:"#fee2e2" },
+            { label:"เครื่องทั้งหมด", val:licenses.length,  color:"#0C447C", bg:"#dbeafe" },
+            { label:"ใช้งานอยู่",      val:active.length,    color:"#166534", bg:"#dcfce7" },
+            { label:"รอยืนยัน",       val:pending.length,   color:"#92400e", bg:"#fef3c7" },
+            { label:"รอยืนยันชำระ",   val:payments.filter(p=>p.status==="pending").length, color:"#991b1b", bg:"#fee2e2" },
           ].map(s => (
             <div key={s.label} style={{ background:s.bg, borderRadius:10, padding:"14px 16px" }}>
               <div style={{ fontSize:11, color:s.color, fontWeight:600, marginBottom:4 }}>{s.label}</div>
@@ -117,15 +143,17 @@ export default function DashboardPage() {
         </div>
 
         <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-          {(["machines","payments"] as const).map(t => (
+          {([
+            ["machines",  `เครื่องทั้งหมด (${licenses.filter(l=>l.plan!=="pending").length})`],
+            ["pending",   `รอยืนยัน${pending.length>0?` (${pending.length})`:""}` ],
+            ["payments",  `การแจ้งชำระ${payments.filter(p=>p.status==="pending").length>0?` (${payments.filter(p=>p.status==="pending").length} รอ)`:""}`],
+          ] as const).map(([t,label]) => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding:"7px 18px", borderRadius:8, fontSize:13, fontWeight:600, cursor:"pointer",
-              background:tab===t?"#1e3a8a":"#fff", color:tab===t?"#fff":"#374151",
-              border:tab===t?"none":"0.5px solid #E5E7EB",
-            }}>
-              {t==="machines" ? `เครื่องทั้งหมด (${licenses.length})` : `การแจ้งชำระ${pending>0?` (${pending} รอ)`:""}`}
-            </button>
-          ))}
+              background: tab===t ? "#1e3a8a" : "#fff",
+              color: tab===t ? "#fff" : "#374151",
+              border: tab===t ? "none" : "0.5px solid #E5E7EB",
+            }}>{label}</button>
         </div>
 
         {tab==="machines" && (
@@ -219,7 +247,87 @@ export default function DashboardPage() {
             )}
           </div>
         )}
+
+        {tab==="pending" && (
+          <div style={{ background:"#fff", border:"0.5px solid #E5E7EB", borderRadius:12, padding:"16px 20px" }}>
+            <p style={S.secLbl}>เครื่องที่รอการยืนยัน</p>
+            {pending.length === 0 ? (
+              <p style={{ color:"#9CA3AF", fontSize:13 }}>ไม่มีเครื่องที่รอยืนยัน</p>
+            ) : (
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+                <thead>
+                  <tr style={{ borderBottom:"1px solid #F3F4F6" }}>
+                    {["ชื่อเครื่อง","Machine ID","วันที่ลงทะเบียน","จัดการ"].map(h => (
+                      <th key={h} style={{ textAlign:"left", padding:"8px 10px", fontSize:11, color:"#6B7280", fontWeight:600, textTransform:"uppercase" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {pending.map(lic => (
+                    <tr key={lic.id} style={{ borderBottom:"0.5px solid #F9FAFB" }}>
+                      <td style={{ padding:"10px 10px", fontWeight:600, color:"#111827" }}>{lic.customer_name || "—"}</td>
+                      <td style={{ padding:"10px 10px", fontFamily:"monospace", fontSize:11, color:"#6B7280" }}>{lic.machine_id?.slice(0,24)}...</td>
+                      <td style={{ padding:"10px 10px", color:"#6B7280" }}>{new Date(lic.created_at).toLocaleDateString("th-TH")}</td>
+                      <td style={{ padding:"10px 10px" }}>
+                        <div style={{ display:"flex", gap:6 }}>
+                          <button onClick={() => { setApproveId(lic.id); setApproveForm({customer_name:lic.customer_name||"", plan:"รายเดือน", expire_days:"30"}); }}
+                            style={{ fontSize:11, padding:"4px 12px", borderRadius:6, border:"none", background:"#DCFCE7", color:"#166534", cursor:"pointer", fontWeight:600 }}>ยืนยัน</button>
+                          <button onClick={() => rejectMachine(lic.id)}
+                            style={{ fontSize:11, padding:"4px 12px", borderRadius:6, border:"none", background:"#FEE2E2", color:"#991B1B", cursor:"pointer" }}>ปฏิเสธ</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </div>
+
+      {approveId && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.4)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div style={{ background:"#fff", borderRadius:14, padding:"28px 32px", width:400, boxShadow:"0 20px 60px rgba(0,0,0,0.2)" }}>
+            <div style={{ fontSize:16, fontWeight:700, color:"#111827", marginBottom:4 }}>ยืนยันเครื่องใหม่</div>
+            <div style={{ fontSize:12, color:"#6B7280", marginBottom:20 }}>{pending.find(l=>l.id===approveId)?.customer_name}</div>
+
+            <div style={{ marginBottom:14 }}>
+              <label style={{ fontSize:12, color:"#6B7280", display:"block", marginBottom:4 }}>ชื่อลูกค้า</label>
+              <input value={approveForm.customer_name} onChange={e => setApproveForm(f=>({...f,customer_name:e.target.value}))}
+                placeholder="เช่น บริษัท ABC จำกัด"
+                style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:"1px solid #E5E7EB", fontSize:13, boxSizing:"border-box" as const, outline:"none" }} />
+            </div>
+
+            <div style={{ marginBottom:14 }}>
+              <label style={{ fontSize:12, color:"#6B7280", display:"block", marginBottom:8 }}>แพ็กเกจ</label>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:10 }}>
+                {PLANS.map(p => (
+                  <button key={p} onClick={() => setApproveForm(f=>({...f,plan:p}))} style={{
+                    padding:"8px", borderRadius:8, fontSize:12, cursor:"pointer", textAlign:"center" as const,
+                    background: approveForm.plan===p?"#dbeafe":"#F9FAFB",
+                    color: approveForm.plan===p?"#1e3a8a":"#6B7280",
+                    border: approveForm.plan===p?"0.5px solid #93c5fd":"0.5px solid #E5E7EB",
+                    fontWeight: approveForm.plan===p ? 600 : 400,
+                  }}>{p}</button>
+                ))}
+              </div>
+              {approveForm.plan !== "ตลอดไป" && (
+                <input type="number" value={approveForm.expire_days}
+                  onChange={e => setApproveForm(f=>({...f,expire_days:e.target.value}))}
+                  placeholder="จำนวนวัน"
+                  style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:"1px solid #E5E7EB", fontSize:13, boxSizing:"border-box" as const, outline:"none" }} />
+              )}
+            </div>
+
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={() => setApproveId(null)} style={{ flex:1, padding:"10px", borderRadius:8, border:"1px solid #E5E7EB", background:"#fff", color:"#6B7280", fontSize:13, cursor:"pointer" }}>ยกเลิก</button>
+              <button onClick={approveMachine} disabled={saving} style={{ flex:2, padding:"10px", borderRadius:8, border:"none", background:"#1e3a8a", color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer" }}>
+                {saving ? "กำลังบันทึก..." : "ยืนยันและเปิดใช้งาน"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editId && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.4)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center" }}>
